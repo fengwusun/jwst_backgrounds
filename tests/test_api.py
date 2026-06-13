@@ -93,12 +93,25 @@ def test_scalar_wavelength_broadcast():
 
 
 # --- snap-to-nearest-baked-pixel ---------------------------------------- #
-def test_snap_off_by_default_keeps_exact():
-    """At a baked field centre, snapping never triggers (exact pixel is baked)."""
+def test_default_snap_is_one_degree():
+    assert jbt.DEFAULT_SNAP_DEG == 1.0
+
+
+def test_baked_center_never_snaps():
+    """At a baked field centre the exact pixel is used (snap or not)."""
     _, ra, dec, _ = fields.resolve("GOODS-N")
-    bkg = jbt.background(ra, dec, 5.0, snap_deg=1.0)
+    bkg = jbt.background(ra, dec, 5.0)            # default snap_deg=1.0
     assert bkg.snapped is None
     assert bkg.used_healpix == bkg.healpix
+
+
+def test_snap_on_by_default_offline():
+    """A point ~0.7 deg off GOODS-N snaps by default (no snap_deg passed, no network)."""
+    _, ra, dec, _ = fields.resolve("GOODS-N")
+    with pytest.warns(UserWarning):
+        bkg = jbt.background(ra, dec + 0.7, 5.0)
+    assert bkg.snapped is not None and bkg.snapped["field"] == "GOODS-N"
+    assert bkg.bkg_data["calendar"].size > 0
 
 
 def test_snap_uses_nearest_baked_offline():

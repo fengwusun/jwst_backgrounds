@@ -52,8 +52,9 @@ DEFAULT_CACHE_URL = CACHE_URLS["2.0"]
 NSIDE = 128                       # healpy tessellation of the background cache
 WAVE_FILE = "std_spectrum_wavelengths.txt"
 THERMAL_FILE = "thermal_curve_jwst_jrigby_v4.0.csv"
-DEFAULT_SNAP_DEG = 0.0            # >0: snap an off-bundle query to the nearest baked
-                                  # pixel within this many degrees (approximate)
+DEFAULT_SNAP_DEG = 1.0            # snap an off-bundle query to the nearest baked
+                                  # pixel within this many degrees (0 disables;
+                                  # ~1% approximation in the NIR, less in MIRI)
 
 _PKG_DIR = os.path.dirname(__file__)
 _REFDATA = os.path.join(_PKG_DIR, "refdata")
@@ -424,9 +425,10 @@ class background():
         self.snapped = snapped
         if snapped is not None:
             warnings.warn(
-                "Snapped (RA,DEC)=(%.5f,%.5f) to baked pixel %d near field '%s' "
-                "(%.3f deg away); background is approximate (~1 percent in the NIR)."
-                % (ra, dec, snapped["pixel"], snapped["field"], snapped["sep_deg"]),
+                "jbt: coordinates snapped to the nearest pre-baked field within "
+                "snap_deg=%g deg (approximate background, ~1%% in the NIR, less in "
+                "the thermal-dominated MIRI range); pass snap_deg=0 for the exact "
+                "pixel, or inspect the .snapped attribute for details." % snap_deg,
                 stacklevel=2)
         self.cache_file = file_from_healpix(used_pixel)
         self.cache_version = get_cache_version(cache_url)

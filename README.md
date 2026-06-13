@@ -15,9 +15,9 @@ catalogs.
   deep, lensing-cluster, wide-survey, and calibration fields is shipped *inside
   the package* (`jwst_backgrounds/field_cache/`, 111 healpix pixels, ~34 MB,
   **byte-identical to STScI**). Those positions need **no internet** — ever.
-* **Snap-to-nearest.** A position that isn't itself pre-baked but lies within a
-  configurable radius (e.g. 1°) of a baked field can reuse that field's cache
-  instead of downloading (opt-in; see [Snapping](#snapping)).
+* **Snap-to-nearest.** A position that isn't itself pre-baked but lies within
+  `snap_deg` of a baked field reuses that field's cache instead of downloading
+  (**on by default at 1°**, ~1% approximation; see [Snapping](#snapping)).
 * **Real caching.** Files downloaded at runtime are cached to disk
   (`$JBT_CACHE_DIR`, default `~/.cache/jwst_backgrounds`) and memory, keyed by
   healpix pixel. The original re-downloaded the data file *and* the `VERSION`
@@ -99,12 +99,15 @@ distance away (max over N/S/E/W, on common calendar days):
 | 2.0° | ≲3.2% | ≲1.0% | ≲8.6% |
 
 The MIRI range barely moves because it is thermal-dominated and thermal is
-field-independent. **Snapping is off by default** (`snap_deg=0`), so default
-output stays exactly consistent with STScI; enable it for fast/offline planning:
+field-independent. **Snapping is on by default at 1°** (`snap_deg=1.0`): a query
+within 1° of a baked field reuses it (and sets `.snapped`); queries farther than
+1° from any field still download their own exact pixel. For results
+byte-identical to STScI at every coordinate, pass `snap_deg=0`:
 
 ```python
-bkg = jbt.background(189.9, 62.5, 7.7, snap_deg=1.0)   # reuses GOODS-N if within 1 deg
+bkg = jbt.background(189.9, 62.5, 7.7)              # within 1 deg of GOODS-N -> snaps
 print(bkg.snapped)        # {'field': 'GOODS-N', 'pixel': ..., 'sep_deg': 0.7} or None
+bkg = jbt.background(189.9, 62.5, 7.7, snap_deg=0)  # force the exact pixel (downloads)
 ```
 
 ## Quick start
@@ -166,6 +169,10 @@ pytest -m network # also checks every bundle file == a fresh STScI download
 
 A direct comparison against the installed official package over all baked fields
 and a wide range of wavelengths gives a maximum difference of **0.0** (bit-for-bit).
+
+The default `snap_deg=1.0` approximates coordinates within 1° of a baked field by
+~1% (less in MIRI); pass `snap_deg=0` for output identical to the official
+package at every coordinate.
 
 ## Installation
 

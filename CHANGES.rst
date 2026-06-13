@@ -12,8 +12,9 @@ Fast fork of jwst_backgrounds. Output is verified identical to the official
 - Forgiving field lookup: case/space/punctuation-insensitive, a large alias
   table (HUDF/CDF-S/NGDEEP/"JADES deep field" -> GOODS-S, CEERS -> EGS, ...),
   glob patterns ("MACS*"), and fuzzy/typo fallback, with disambiguation.
-- Optional snap-to-nearest: an off-bundle query within snap_deg of a baked field
-  reuses it (off by default; ~1% at 1 deg in the NIR, less in the MIRI range).
+- Snap-to-nearest: an off-bundle query within snap_deg of a baked field reuses it
+  (default snap_deg=1 deg, ~1% in the NIR and less in MIRI; set snap_deg=0 for the
+  exact pixel, byte-identical to STScI).
 - Disk + in-memory caching of cache files keyed by healpix pixel; VERSION is
   read from the bundle manifest for the baked cache (no per-call network).
 - Vectorized binary parse (numpy.frombuffer) and single-wavelength bathtub

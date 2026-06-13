@@ -9,7 +9,7 @@ Options:
     --field=<name>                use a named JWST field instead of <ra> <dec>
     --list-fields                 list the known field names and exit
     --cache=<ver>                 STScI cache version: 2.0 or 3.0 [default: 2.0]
-    --snap=<deg>                  use nearest pre-baked field within this many degrees (0=off) [default: 0]
+    --snap=<deg>                  reuse nearest pre-baked field within this many degrees (0=exact) [default: 1.0]
     --thresh=<float>              threshold factor relative to the minimum background [default: 1.1]
     --day=<integer>               which day in the year for which to extract the background
     --showsubbkgs                 show background components in the bathtub plot
