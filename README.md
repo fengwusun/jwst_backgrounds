@@ -11,7 +11,7 @@ catalogs.
 
 ## What this fork adds
 
-* **Pre-baked deep fields.** The background cache for 18 JWST extragalactic
+* **Pre-baked deep fields.** The background cache for 17 JWST extragalactic
   deep, lensing-cluster, and calibration fields is shipped *inside the package*
   (`jwst_backgrounds/field_cache/`, 92 healpix pixels, ~27 MB, **byte-identical
   to STScI**). Those positions need **no internet** — ever.
@@ -57,14 +57,25 @@ one or a few healpix pixels — it re-downloads the *same* file once per source.
 jwst_backgrounds --list-fields
 ```
 
-Wide/deep: **GOODS-N, GOODS-S, HUDF, COSMOS, UDS, EGS, NEP-TDF**.
+Wide/deep: **GOODS-N, GOODS-S, COSMOS, UDS, EGS, NEP-TDF**.
 Lensing clusters: **Abell 2744, Abell 370, MACS 0416, MACS 0717, MACS 1149,
 AS1063, MACS 1423, El Gordo, SMACS 0723**.
 Calibration: **LMC, SMC**.
 
-Names are case-/separator-insensitive and many aliases are accepted
-(`CEERS`→EGS, `UNCOVER`→Abell 2744, `CDFS`→GOODS-S, `XDF`→HUDF,
-`SMACS`→SMACS 0723, …). Centres and per-field cache radii live in
+Field names are matched forgivingly — case-, space- and punctuation-insensitive,
+with a large alias table, glob patterns, and fuzzy (typo) fallback:
+
+```python
+jbt.background.from_field("HUDF", 3.5)            # -> GOODS-S (so are CDF-S,
+jbt.background.from_field("JADES deep field", 3.5) #    NGDEEP, "GOODS South", ...)
+jbt.background.from_field("CEERS", 3.5)           # -> EGS
+jbt.background.from_field("GOODS*N", 3.5)         # glob -> GOODS-N
+fields.resolve("cosmso")                          # typo -> COSMOS
+fields.search("MACS*")                            # -> ['MACS0416','MACS0717',...]
+```
+
+Ambiguous queries (`"MACS*"`, `"GOODS"`, `"Abell"`) raise with the candidate
+list. Centres, radii, and the alias table live in
 [`jwst_backgrounds/fields.py`](jwst_backgrounds/fields.py).
 
 ## Snapping

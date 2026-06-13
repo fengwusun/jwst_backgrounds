@@ -7,12 +7,38 @@ from jwst_backgrounds import jbt, fields
 
 
 def test_field_registry_and_aliases():
-    canon, ra, dec, rad = fields.resolve("goods n")
-    assert canon == "GOODS-N"
+    assert fields.resolve("goods n")[0] == "GOODS-N"
     assert fields.resolve("CEERS")[0] == "EGS"
     assert fields.resolve("a2744")[0] == "Abell2744"
     with pytest.raises(KeyError):
         fields.resolve("not-a-field")
+
+
+def test_goods_s_many_names():
+    """GOODS-S is reachable as HUDF, CDF-S, NGDEEP, 'JADES deep field', ..."""
+    for name in ["GOODS-S", "GOODS S", "goods south", "CDF-S", "CDFS", "ECDFS",
+                 "HUDF", "XDF", "NGDEEP", "JADES deep field", "JADES-GS",
+                 "Hubble Ultra Deep Field"]:
+        assert fields.resolve(name)[0] == "GOODS-S", name
+
+
+def test_resolve_wildcards_and_fuzzy():
+    assert fields.resolve("GOODS*N")[0] == "GOODS-N"
+    assert fields.resolve("*gordo*")[0] == "ElGordo"
+    assert fields.resolve("MACS J1149.5+2223")[0] == "MACS1149"
+    assert fields.resolve("cosmso")[0] == "COSMOS"          # typo -> fuzzy
+    assert fields.resolve("smacs")[0] == "SMACS0723"
+
+
+def test_resolve_ambiguous_raises():
+    for q in ["MACS*", "GOODS", "Abell"]:
+        with pytest.raises(KeyError):
+            fields.resolve(q)
+
+
+def test_search_returns_all_matches():
+    assert fields.search("MACS*") == ["MACS0416", "MACS0717", "MACS1149", "MACS1423"]
+    assert "GOODS-N" in fields.search("goods") and "GOODS-S" in fields.search("goods")
 
 
 @pytest.mark.parametrize("name", fields.list_fields())
