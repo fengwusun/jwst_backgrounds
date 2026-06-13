@@ -1,0 +1,5 @@
+include README.md LICENSE.rst CHANGES.rst RELEASES.md requirements.txt
+recursive-include jwst_backgrounds/refdata *
+recursive-include jwst_backgrounds/field_cache *
+include jwst_backgrounds/agreement/*.pdf
+recursive-include tests *.py

@@ -1,5 +1,8 @@
 .DS_Store
 *.pyc
+__pycache__/
+.pytest_cache/
 build/
 dist/
+*.egg-info/
 jwst_backgrounds.egg-info

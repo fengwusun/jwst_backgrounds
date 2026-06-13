@@ -15,18 +15,19 @@ setup(name='jwst_backgrounds',
       long_description=long_description,
       long_description_content_type='text/markdown',
 
-      # The project's main homepage.
-      url='https://github.com/spacetelescope/jwst_background',
+      # The project's main homepage (fast fork).
+      url='https://github.com/fengwusun/jwst_backgrounds',
 
-      # Author details
+      # Author details (original authors of jwst_backgrounds)
       author='Jane Rigby (GSFC) and Klaus Pontoppidan (STScI)',
       author_email='Jane.Rigby@nasa.gov',
 
       # Choose your license
       license='BSD',
-      download_url = 'https://github.com/spacetelescope/jwst_backgrounds/',
+      download_url = 'https://github.com/fengwusun/jwst_backgrounds/',
       packages=['jwst_backgrounds'],
-      package_data={'jwst_backgrounds': ['refdata/*.csv','refdata/*.txt','agreement/*.pdf']},
+      package_data={'jwst_backgrounds': ['refdata/*.csv', 'refdata/*.txt', 'agreement/*.pdf',
+                                         'field_cache/*.bin', 'field_cache/manifest.json']},
       install_requires=['healpy>=1.10',
                         'matplotlib>=3.1.1',
                         'numpy>=1.17.0',
