@@ -9,6 +9,7 @@ Options:
     --field=<name>                use a named JWST field instead of <ra> <dec>
     --list-fields                 list the known field names and exit
     --cache=<ver>                 STScI cache version: 2.0 or 3.0 [default: 2.0]
+    --snap=<deg>                  use nearest pre-baked field within this many degrees (0=off) [default: 0]
     --thresh=<float>              threshold factor relative to the minimum background [default: 1.1]
     --day=<integer>               which day in the year for which to extract the background
     --showsubbkgs                 show background components in the bathtub plot
@@ -46,8 +47,9 @@ def main():
 
     thisday = None if opt['--day'] is None else int(opt['--day'])
     cache_url = jbt.CACHE_URLS.get(opt['--cache'], jbt.DEFAULT_CACHE_URL)
+    snap_deg = float(opt['--snap'])
 
     jbt.get_background(ra, dec, wavelength,
                        thresh=float(opt['--thresh']), thisday=thisday, showsubbkgs=opt['--showsubbkgs'],
                        background_file=opt['--background_file'], bathtub_file=opt['--bathtub_file'],
-                       cache_url=cache_url)
+                       cache_url=cache_url, snap_deg=snap_deg)

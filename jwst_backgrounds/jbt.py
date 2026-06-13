@@ -26,6 +26,7 @@ and ETC to confirm the observability of any JWST targets.
 
 import os
 import json
+import warnings
 import urllib.request
 import urllib.error
 
@@ -51,6 +52,8 @@ DEFAULT_CACHE_URL = CACHE_URLS["2.0"]
 NSIDE = 128                       # healpy tessellation of the background cache
 WAVE_FILE = "std_spectrum_wavelengths.txt"
 THERMAL_FILE = "thermal_curve_jwst_jrigby_v4.0.csv"
+DEFAULT_SNAP_DEG = 0.0            # >0: snap an off-bundle query to the nearest baked
+                                  # pixel within this many degrees (approximate)
 
 _PKG_DIR = os.path.dirname(__file__)
 _REFDATA = os.path.join(_PKG_DIR, "refdata")
@@ -67,6 +70,7 @@ _STATIC_CACHE = {}   # thermal_file -> (wave_array, thermal_bg)
 _BYTES_CACHE = {}    # (cache_url, healpix) -> raw bytes
 _PARSE_CACHE = {}    # (cache_url, healpix, thermal_file) -> bkg_data dict
 _VERSION_CACHE = {}  # cache_url -> version string
+_BAKED_INDEX = None  # cached (pixels, unit vectors, field names) for snapping
 
 
 # --------------------------------------------------------------------------- #
@@ -121,26 +125,95 @@ def _bundle_cache_url():
     return DEFAULT_CACHE_URL
 
 
+def _baked_index():
+    """Cached description of the baked pixels, for nearest-pixel snapping.
+
+    Returns a dict with 'pixels' (int array), 'vecs' (N x 3 unit vectors of the
+    pixel centres) and 'field' (list of field names), or None if no bundle.
+    """
+    global _BAKED_INDEX
+    if _BAKED_INDEX is not None:
+        return _BAKED_INDEX or None
+    man = os.path.join(_FIELD_CACHE, "manifest.json")
+    if not os.path.isfile(man):
+        _BAKED_INDEX = {}
+        return None
+    with open(man) as f:
+        manifest = json.load(f)
+    pix_field = {}
+    for name, info in manifest.get("fields", {}).items():
+        for p in info["pixels"]:
+            pix_field.setdefault(int(p), name)   # first field wins for shared pixels
+    pixels = np.array(sorted(pix_field), dtype=int)
+    if pixels.size == 0:
+        _BAKED_INDEX = {}
+        return None
+    vecs = np.array(healpy.pix2vec(NSIDE, pixels, nest=False)).T   # (N, 3)
+    _BAKED_INDEX = {"pixels": pixels, "vecs": vecs,
+                    "field": [pix_field[int(p)] for p in pixels]}
+    return _BAKED_INDEX
+
+
+def nearest_baked(ra, dec):
+    """Nearest baked pixel to a position: ``(healpix, separation_deg, field_name)``.
+
+    Returns ``(None, inf, None)`` if no field bundle is present.
+    """
+    idx = _baked_index()
+    if idx is None:
+        return None, float("inf"), None
+    v = np.asarray(healpy.ang2vec(ra, dec, lonlat=True))
+    dots = np.clip(idx["vecs"] @ v, -1.0, 1.0)
+    k = int(np.argmax(dots))
+    sep = float(np.degrees(np.arccos(dots[k])))
+    return int(idx["pixels"][k]), sep, idx["field"][k]
+
+
+def _resolve_pixel(ra, dec, snap_deg):
+    """Pick the healpix pixel to read for a query, applying snap if enabled.
+
+    Snapping only kicks in when the query's own pixel is not in the shipped
+    bundle and a baked pixel lies within ``snap_deg``; then the nearest baked
+    pixel is used (approximate). Returns ``(healpix, snapped_info_or_None)``.
+    """
+    h = int(healpix_of(ra, dec))
+    if snap_deg and snap_deg > 0 and _packaged_path(h) is None:
+        p, sep, field = nearest_baked(ra, dec)
+        if p is not None and sep <= snap_deg:
+            return p, {"field": field, "pixel": p, "sep_deg": sep, "query_healpix": h}
+    return h, None
+
+
 # --------------------------------------------------------------------------- #
 # Fetching + caching the binary cache files
 # --------------------------------------------------------------------------- #
 def get_cache_version(cache_url=DEFAULT_CACHE_URL, timeout=30):
-    """Fetch the STScI cache VERSION string once; fall back to the bundle/offline."""
+    """Cache VERSION string (once per process).
+
+    For the baked cache the shipped manifest records the authoritative version,
+    so we use it directly (no network); otherwise we fetch it from STScI and
+    fall back to the manifest when offline.
+    """
     if cache_url in _VERSION_CACHE:
         return _VERSION_CACHE[cache_url]
-    version = None
-    try:
-        with urllib.request.urlopen(cache_url + "VERSION", timeout=timeout) as fh:
-            version = fh.readlines()[0].decode("utf-8").rstrip("\n")
-    except (urllib.error.URLError, OSError, IndexError):
-        # offline: use the version recorded in the shipped bundle, if it matches
-        man = os.path.join(_FIELD_CACHE, "manifest.json")
+    man = os.path.join(_FIELD_CACHE, "manifest.json")
+
+    def _from_manifest():
         if cache_url == _bundle_cache_url() and os.path.isfile(man):
             try:
                 with open(man) as f:
-                    version = json.load(f).get("version")
+                    return json.load(f).get("version")
             except (OSError, ValueError):
-                pass
+                return None
+        return None
+
+    version = _from_manifest()
+    if version is None:
+        try:
+            with urllib.request.urlopen(cache_url + "VERSION", timeout=timeout) as fh:
+                version = fh.readlines()[0].decode("utf-8").rstrip("\n")
+        except (urllib.error.URLError, OSError, IndexError):
+            version = None
     _VERSION_CACHE[cache_url] = version
     return version
 
@@ -232,11 +305,11 @@ def parse_bin(data, wave_array, thermal_bg):
     }
 
 
-def get_bkg_data(ra, dec, thermal_file=THERMAL_FILE, cache_url=DEFAULT_CACHE_URL,
-                 cache_dir=USER_CACHE_DIR, verbose=False):
-    """bkg_data dict for a position, using all caches (network at most once)."""
+def get_bkg_data_pixel(healpix, thermal_file=THERMAL_FILE, cache_url=DEFAULT_CACHE_URL,
+                       cache_dir=USER_CACHE_DIR, verbose=False):
+    """bkg_data dict for an explicit healpix pixel (cached)."""
     wave_array, thermal_bg = read_static_data(thermal_file)
-    healpix = int(healpix_of(ra, dec))
+    healpix = int(healpix)
     key = (cache_url, healpix, thermal_file)
     if key in _PARSE_CACHE:
         return _PARSE_CACHE[key]
@@ -244,6 +317,13 @@ def get_bkg_data(ra, dec, thermal_file=THERMAL_FILE, cache_url=DEFAULT_CACHE_URL
     parsed = parse_bin(data, wave_array, thermal_bg)
     _PARSE_CACHE[key] = parsed
     return parsed
+
+
+def get_bkg_data(ra, dec, thermal_file=THERMAL_FILE, cache_url=DEFAULT_CACHE_URL,
+                 cache_dir=USER_CACHE_DIR, verbose=False):
+    """bkg_data dict for a position, using all caches (network at most once)."""
+    return get_bkg_data_pixel(int(healpix_of(ra, dec)), thermal_file, cache_url,
+                              cache_dir, verbose=verbose)
 
 
 # --------------------------------------------------------------------------- #
@@ -318,7 +398,8 @@ class background():
     '''
 
     def __init__(self, ra, dec, wavelength, thresh=1.1, thermal_file=THERMAL_FILE,
-                 cache_url=DEFAULT_CACHE_URL, cache_dir=USER_CACHE_DIR, verbose=False):
+                 cache_url=DEFAULT_CACHE_URL, cache_dir=USER_CACHE_DIR,
+                 snap_deg=DEFAULT_SNAP_DEG, verbose=False):
         # global attributes (kept for backwards compatibility)
         self.cache_url = cache_url
         self.local_path = _REFDATA
@@ -335,12 +416,22 @@ class background():
         self.wavelength = wavelength
         self.thresh = thresh
 
-        # load variable content (cached)
+        # load variable content (cached); optionally snap to nearest baked pixel
+        self.snap_deg = snap_deg
         self.healpix = int(healpix_of(ra, dec))
-        self.cache_file = file_from_healpix(self.healpix)
+        used_pixel, snapped = _resolve_pixel(ra, dec, snap_deg)
+        self.used_healpix = used_pixel
+        self.snapped = snapped
+        if snapped is not None:
+            warnings.warn(
+                "Snapped (RA,DEC)=(%.5f,%.5f) to baked pixel %d near field '%s' "
+                "(%.3f deg away); background is approximate (~1 percent in the NIR)."
+                % (ra, dec, snapped["pixel"], snapped["field"], snapped["sep_deg"]),
+                stacklevel=2)
+        self.cache_file = file_from_healpix(used_pixel)
         self.cache_version = get_cache_version(cache_url)
-        self.bkg_data = get_bkg_data(ra, dec, thermal_file, cache_url, cache_dir,
-                                     verbose=verbose)
+        self.bkg_data = get_bkg_data_pixel(used_pixel, thermal_file, cache_url,
+                                           cache_dir, verbose=verbose)
 
         # interpolate bathtub curve and package it
         self.make_bathtub(wavelength)
@@ -490,7 +581,7 @@ class background():
 # --------------------------------------------------------------------------- #
 def get_backgrounds(ra, dec, wavelength, thresh=1.1, thermal_file=THERMAL_FILE,
                     cache_url=DEFAULT_CACHE_URL, cache_dir=USER_CACHE_DIR,
-                    full=False, verbose=False):
+                    snap_deg=DEFAULT_SNAP_DEG, full=False, verbose=False):
     """Backgrounds for a whole catalog, grouped by healpix pixel.
 
     All sources sharing a pixel (e.g. an entire survey field) trigger a single
@@ -523,13 +614,26 @@ def get_backgrounds(ra, dec, wavelength, thresh=1.1, thermal_file=THERMAL_FILE,
         raise ValueError("wavelength must be scalar or match ra/dec shape")
 
     pix = healpix_of(ra, dec).astype(int)
+    used = pix.copy()
+    snap_sep = np.zeros(ra.size)
+    snap_field = np.array([""] * ra.size, dtype=object)
+    if snap_deg and snap_deg > 0:
+        for i in range(ra.size):
+            up, sn = _resolve_pixel(ra[i], dec[i], snap_deg)
+            used[i] = up
+            if sn is not None:
+                snap_sep[i] = sn["sep_deg"]
+                snap_field[i] = sn["field"]
+
     baths = [None] * ra.size
     wave_array, thermal_bg = read_static_data(thermal_file)
-    uniq = np.unique(pix)
+    uniq = np.unique(used)
     if verbose:
-        print("[jbt] %d sources -> %d unique healpix pixel(s)" % (ra.size, uniq.size))
+        nsnap = int(np.count_nonzero(snap_sep))
+        print("[jbt] %d sources -> %d unique pixel(s)%s"
+              % (ra.size, uniq.size, (", %d snapped" % nsnap) if nsnap else ""))
     for p in uniq:
-        idx = np.where(pix == p)[0]
+        idx = np.where(used == p)[0]
         data = fetch_bin(p, cache_url=cache_url, cache_dir=cache_dir, verbose=verbose)
         parsed = parse_bin(data, wave_array, thermal_bg)
         for i in idx:
@@ -537,7 +641,8 @@ def get_backgrounds(ra, dec, wavelength, thresh=1.1, thermal_file=THERMAL_FILE,
 
     tot = [b["total_thiswave"] for b in baths]
     out = {
-        "ra": ra, "dec": dec, "wavelength": wl, "healpix": pix,
+        "ra": ra, "dec": dec, "wavelength": wl, "healpix": pix, "used_healpix": used,
+        "snap_sep_deg": snap_sep, "snap_field": snap_field,
         "ndays_observable": np.array([t.size for t in tot]),
         "good_days": np.array([b["good_days"] for b in baths]),
         "bkg_min": np.array([b["themin"] for b in baths]),
@@ -554,9 +659,11 @@ def clear_cache(disk=False):
 
     The pre-baked package bundle is never removed.
     """
+    global _BAKED_INDEX
     _BYTES_CACHE.clear()
     _PARSE_CACHE.clear()
     _VERSION_CACHE.clear()
+    _BAKED_INDEX = None
     if disk and os.path.isdir(USER_CACHE_DIR):
         import shutil
         shutil.rmtree(USER_CACHE_DIR)
@@ -568,9 +675,9 @@ def clear_cache(disk=False):
 def get_background(ra, dec, wavelength, thresh=1.1, plot_background=True, plot_bathtub=True,
                    thisday=None, showsubbkgs=False, write_background=True, write_bathtub=True,
                    background_file="background.txt", bathtub_file="background_versus_day.txt",
-                   cache_url=DEFAULT_CACHE_URL):
+                   cache_url=DEFAULT_CACHE_URL, snap_deg=DEFAULT_SNAP_DEG):
     """Get the background data and create plots/outputs with one command."""
-    bkg = background(ra, dec, wavelength, thresh=thresh, cache_url=cache_url)
+    bkg = background(ra, dec, wavelength, thresh=thresh, cache_url=cache_url, snap_deg=snap_deg)
     calendar = bkg.bkg_data["calendar"]
     print("These coordinates are observable by JWST", len(calendar), "days per year.")
     print("For", bkg.bathtub["good_days"], "of those days, the background is <", thresh,

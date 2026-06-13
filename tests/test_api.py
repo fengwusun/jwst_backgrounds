@@ -64,3 +64,42 @@ def test_memory_cache_reuse():
 def test_scalar_wavelength_broadcast():
     out = jbt.get_backgrounds([189.2286, 53.1228], [62.2389, -27.8051], 5.0)
     assert np.all(out["wavelength"] == 5.0)
+
+
+# --- snap-to-nearest-baked-pixel ---------------------------------------- #
+def test_snap_off_by_default_keeps_exact():
+    """At a baked field centre, snapping never triggers (exact pixel is baked)."""
+    _, ra, dec, _ = fields.resolve("GOODS-N")
+    bkg = jbt.background(ra, dec, 5.0, snap_deg=1.0)
+    assert bkg.snapped is None
+    assert bkg.used_healpix == bkg.healpix
+
+
+def test_snap_uses_nearest_baked_offline():
+    """A point ~0.7 deg off GOODS-N snaps to a baked GOODS-N pixel (no network)."""
+    _, ra, dec, _ = fields.resolve("GOODS-N")
+    with pytest.warns(UserWarning):
+        bkg = jbt.background(ra, dec + 0.7, 5.0, snap_deg=1.0)
+    assert bkg.snapped is not None
+    assert bkg.snapped["field"] == "GOODS-N"
+    assert 0.0 < bkg.snapped["sep_deg"] <= 1.0
+    assert bkg.used_healpix != bkg.healpix
+    assert bkg.bkg_data["calendar"].size > 0
+
+
+def test_snap_respects_radius():
+    """nearest_baked reports a real separation; tiny snap_deg does not snap."""
+    _, ra, dec, _ = fields.resolve("GOODS-N")
+    p, sep, field = jbt.nearest_baked(ra, dec + 0.7)
+    assert field == "GOODS-N" and sep > 0
+    px, info = jbt._resolve_pixel(ra, dec + 0.7, snap_deg=0.01)
+    assert info is None              # too far to snap at 0.01 deg
+
+
+def test_batch_snap_columns():
+    """get_backgrounds reports snap separations per source when snap_deg>0."""
+    _, ra, dec, _ = fields.resolve("GOODS-N")
+    out = jbt.get_backgrounds([ra, ra], [dec, dec + 0.7], 5.0, snap_deg=1.0)
+    assert out["snap_sep_deg"][0] == 0.0            # centre: exact
+    assert out["snap_sep_deg"][1] > 0.0             # offset: snapped
+    assert out["snap_field"][1] == "GOODS-N"

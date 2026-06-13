@@ -1,57 +1,103 @@
-jwst_backgrounds is a a simple program to predict the levels of background emission
-in JWST observations, for use in proposal planning.
+# jwst_backgrounds — fast fork
 
-It accesses a precompiled background cache prepared by Space Telescope Science Institute. The background cache is hosted by the 
-Mikulski Archive for Space Telescopes (MAST), so you need internet access to run the tool with the remote cache. It is possible to
-download the full background cache to your local machine. Instructions for downloading the background cache can be found at http://archive.stsci.edu/archive_news/2017/08-Aug/index.html#article1
+A drop-in, much faster fork of the STScI [`jwst_backgrounds`](https://github.com/spacetelescope/jwst_backgrounds)
+tool (JBT). It predicts the JWST background (zodiacal light, in-field galactic
+ISM/CIB, scattered stray light, and thermal self-emission) at any sky position
+and wavelength, versus calendar day.
 
-For a given target (RA, DEC), and wavelength, jwst_backgrounds does the following:
-- Plot the spectrum of the background for that target on a given calendar day.
-- Plot the total background for that target versus calendar day.
-- Compute the number of days per year that the target is observable at low background,
-  for a given wavelength and a selectable threshold.
-- Save the retrieved background data to file.
-  
-This code was written by Jane Rigby (GSFC, Jane.Rigby@nasa.gov) and Klaus Pontoppidan (STScI, pontoppi@stsci.edu)
-The background cache was prepared by Wayne Kinzel at STScI, and is the same as used by the JWST Exposure Time Calculator.
+It returns the **same numbers as the official package** (verified bit-for-bit —
+see [Consistency](#consistency)), but is built for repeated/offline use and for
+catalogs.
 
-This software is provided as-is, with no warranty.
+## What this fork adds
 
-
-## Fast fork (this repository)
-
-This is a performance fork of the STScI `jwst_backgrounds` tool. It returns the
-**same numbers** as the official package (verified bit-for-bit; see
-`tests/`), but is dramatically faster and works offline for the common case:
-
-* **Pre-baked deep fields.** The background cache for the JWST extragalactic
-  deep / calibration fields (GOODS-N/S, COSMOS, UDS, EGS, Abell 2744, Abell 370,
-  NEP-TDF, LMC) is shipped *inside the package* (`jwst_backgrounds/field_cache/`,
-  byte-identical to STScI). Those positions need **no internet** at all.
-* **Real caching.** Every cache file downloaded at runtime is cached to disk
-  (`$JBT_CACHE_DIR`, default `~/.cache/jwst_backgrounds`) and to memory, keyed by
-  healpix pixel. The original re-downloaded the file *and* the `VERSION` file on
-  every call.
-* **Vectorized internals.** The binary cache is parsed with `numpy`
-  (no per-day Python loop) and the bathtub curve is interpolated without
+* **Pre-baked deep fields.** The background cache for 18 JWST extragalactic
+  deep, lensing-cluster, and calibration fields is shipped *inside the package*
+  (`jwst_backgrounds/field_cache/`, 92 healpix pixels, ~27 MB, **byte-identical
+  to STScI**). Those positions need **no internet** — ever.
+* **Snap-to-nearest.** A position that isn't itself pre-baked but lies within a
+  configurable radius (e.g. 1°) of a baked field can reuse that field's cache
+  instead of downloading (opt-in; see [Snapping](#snapping)).
+* **Real caching.** Files downloaded at runtime are cached to disk
+  (`$JBT_CACHE_DIR`, default `~/.cache/jwst_backgrounds`) and memory, keyed by
+  healpix pixel. The original re-downloaded the data file *and* the `VERSION`
+  file on **every** call.
+* **Vectorized internals.** The binary cache is parsed with `numpy.frombuffer`
+  (no per-day Python loop), and the bathtub curve is interpolated without
   rebuilding five `scipy.interp1d` objects per call.
-* **Batch API** for catalogs (`get_backgrounds`) that groups sources by healpix
-  pixel — a whole survey field costs a single file read.
-* **Composable plots:** `plot_background`/`plot_bathtub` accept `ax=` and return
-  `(fig, ax)` instead of only calling `plt.show()`.
+* **Batch API** (`get_backgrounds`) that groups a catalog by healpix pixel — a
+  whole survey field costs a single file read.
+* **Field registry + re-baker**, `background.from_field("GOODS-N", 3.5)`,
+  composable plots that return `(fig, ax)`, and CLI flags `--field`,
+  `--list-fields`, `--cache`, `--snap`.
+* **Optional `sl_cache_3.0`** (the regenerated 2025 cache) via
+  `cache_url=jbt.CACHE_URLS["3.0"]`.
 
-Typical speedups: a single repeated query is ~10,000× faster (warm cache); a
-catalog of a few thousand sources in one field goes from minutes to ~1 second.
+## Benchmarks
 
-Output stays consistent with the official package because the default cache is
-the same one STScI ships (`sl_cache_2.0`). The newer `sl_cache_3.0` (regenerated
-2025; identical at >2 µm, differs only at 0.5–1.2 µm) is available via
-`cache_url=jbt.CACHE_URLS["3.0"]`.
+Single position = GOODS-N (a pre-baked field); catalog = 3,000 sources spread
+across that field. Measured on a laptop over a normal connection (your network
+latency dominates the official numbers).
 
-### Quick start (fast fork)
+| operation | official `jwst_backgrounds` | this fork | speed-up |
+|---|---|---|---|
+| one query, repeated (warm) | ~250 ms each (re-downloads every call) | **0.027 ms** | **~9,000×** |
+| one query, first call in a process | ~250 ms | **3 ms** (reads local bundle, no network) | ~80× |
+| 3,000-source catalog, one field | ~12 min (3,000 × 250 ms) | **0.05 s** | **~16,000×** |
+| parse one cache file (CPU only) | ~1.0 ms | **0.02 ms** | ~45× |
+| bathtub interpolation (CPU only) | ~0.20 ms | **0.007 ms** | ~30× |
+
+The official tool makes two HTTPS requests on every single call and never
+caches; ~95% of its wall-clock is network. For a survey field — which falls in
+one or a few healpix pixels — it re-downloads the *same* file once per source.
+
+## Pre-baked fields
+
+```
+jwst_backgrounds --list-fields
+```
+
+Wide/deep: **GOODS-N, GOODS-S, HUDF, COSMOS, UDS, EGS, NEP-TDF**.
+Lensing clusters: **Abell 2744, Abell 370, MACS 0416, MACS 0717, MACS 1149,
+AS1063, MACS 1423, El Gordo, SMACS 0723**.
+Calibration: **LMC, SMC**.
+
+Names are case-/separator-insensitive and many aliases are accepted
+(`CEERS`→EGS, `UNCOVER`→Abell 2744, `CDFS`→GOODS-S, `XDF`→HUDF,
+`SMACS`→SMACS 0723, …). Centres and per-field cache radii live in
+[`jwst_backgrounds/fields.py`](jwst_backgrounds/fields.py).
+
+## Snapping
+
+The STScI model is tabulated per healpix pixel at NSIDE=128 (~0.46° cells) with
+**no** sub-pixel interpolation — the official tool already maps any query to its
+containing pixel. The `snap_deg` option extends that idea: if a query's own
+pixel isn't in the shipped bundle, reuse the **nearest baked pixel** within
+`snap_deg` degrees (and flag it on the result).
+
+How approximate is that? Worst-case difference between a pixel and one a given
+distance away (max over N/S/E/W, on common calendar days):
+
+| separation | @3.5 µm (NIR) | @21 µm (MIRI) | 1–25 µm (max) |
+|---|---|---|---|
+| 0.5° | ≲1.0% | ≲0.4% | ≲1.4% |
+| **1.0°** | **≲1.5%** | **≲0.6%** | **≲2.5%** |
+| 2.0° | ≲3.2% | ≲1.0% | ≲8.6% |
+
+The MIRI range barely moves because it is thermal-dominated and thermal is
+field-independent. **Snapping is off by default** (`snap_deg=0`), so default
+output stays exactly consistent with STScI; enable it for fast/offline planning:
+
+```python
+bkg = jbt.background(189.9, 62.5, 7.7, snap_deg=1.0)   # reuses GOODS-N if within 1 deg
+print(bkg.snapped)        # {'field': 'GOODS-N', 'pixel': ..., 'sep_deg': 0.7} or None
+```
+
+## Quick start
 
 ```python
 from jwst_backgrounds import jbt
+import numpy as np
 
 # A named deep field — served from the shipped bundle, no network:
 bkg = jbt.background.from_field("GOODS-N", 3.5)
@@ -60,96 +106,83 @@ print(bkg.bathtub["good_days"], "good days at 3.5 um")
 # Any position (downloads + caches on first use):
 bkg = jbt.background(189.2, 62.2, 3.5)
 
-# A whole catalog at once -> dict of numpy arrays:
-import numpy as np
+# A whole catalog at once -> dict of numpy arrays
+# (bkg_min/mean/max, good_days, ndays_observable, healpix, snap_sep_deg, ...):
 ra  = np.array([189.20, 189.22, 189.25])
 dec = np.array([ 62.22,  62.24,  62.26])
-tab = jbt.get_backgrounds(ra, dec, wavelength=3.5)   # bkg_min/mean/max, good_days, ...
+out = jbt.get_backgrounds(ra, dec, wavelength=3.5)
+
+# Compose plots (returns fig, ax; pass ax= to place them):
+import matplotlib.pyplot as plt
+fig, (a, b) = plt.subplots(1, 2, figsize=(13, 5))
+bkg.plot_background(ax=a, show=False)
+bkg.plot_bathtub(ax=b, showsubbkgs=True, show=False)
 ```
 
-### Re-baking the field bundle
+Command line:
+
+```
+jwst_backgrounds --field GOODS-N 3.5          # named field, from the bundle
+jwst_backgrounds 189.2 62.2 3.5 --cache 3.0   # explicit coords, newer cache
+jwst_backgrounds 189.9 62.5 7.7 --snap 1.0    # snap to nearest baked field
+```
+
+## Re-baking the field bundle
 
 To refresh the bundle, add fields, or bake from `sl_cache_3.0`:
 
 ```
-python -m jwst_backgrounds.bake                              # re-bake the default set
-python -m jwst_backgrounds.bake --fields GOODS-N COSMOS      # a subset
-python -m jwst_backgrounds.bake --cache 3.0 --radius 0.3     # different cache / radius
+python -m jwst_backgrounds.bake                          # re-bake the default set
+python -m jwst_backgrounds.bake --fields GOODS-N COSMOS  # a subset
+python -m jwst_backgrounds.bake --cache 3.0 --radius 0.3 # different cache / radius
 ```
 
-Field names and centres live in `jwst_backgrounds/fields.py`; many aliases
-(`CEERS`→EGS, `A2744`→Abell2744, `CDFS`→GOODS-S, …) are accepted. List them with
-`jwst_backgrounds --list-fields`.
+Add your own fields by editing `DEEP_FIELDS` in
+[`jwst_backgrounds/fields.py`](jwst_backgrounds/fields.py), then re-bake.
 
+## Consistency
 
-INSTALLATION
-
-Using pip:
-----------
-```
-pip install jwst_backgrounds
-```
-
-Note: healpy (version >= 1.10) is a required dependency, so if you don't have it pip will install it automatically. 
-
-Note: to upgrade the JBT with pip use `pip install jwst_background --upgrade`
-
-Using Conda
------------
-First clone the repository
+The default cache is the one the official package ships (`sl_cache_2.0`), and
+the shipped `.bin` files are byte-identical to STScI. The test suite proves it:
 
 ```
-git clone git@github.com:fengwusun/jwst_backgrounds.git
-cd jwst_backgrounds
-conda create --name <env> --file requirements.txt
+pytest            # offline: vectorized parse == struct reference, bathtub == interp1d
+pytest -m network # also checks every bundle file == a fresh STScI download
 ```
 
-where `<env>` is the name of the environment you wish to create and requirements is the `requirements.txt` in the package directory.
-To activate your JBT enter the following command:
+A direct comparison against the installed official package over all baked fields
+and a wide range of wavelengths gives a maximum difference of **0.0** (bit-for-bit).
+
+## Installation
 
 ```
-source activate <env>
+pip install git+https://github.com/fengwusun/jwst_backgrounds
 ```
 
-Manually
-----------
-Clone the repository from github and install using `easy_install`.
+or from a clone:
 
 ```
 git clone git@github.com:fengwusun/jwst_backgrounds.git
 cd jwst_backgrounds
-easy_install .
+pip install -e .
 ```
 
-   
-RUNNING THE CODE:
-```
-python			# Start python.
-from jwst_backgrounds import jbt 	# Import the background module
-```
+Dependencies (installed automatically): `healpy>=1.10`, `numpy>=1.17`,
+`scipy>=1.1`, `matplotlib>=3.1.1`.
 
-Below is an example that plots a background curve for a given RA, DEC, wavelength, threshold
-```
-jbt.get_background(261.6833333, -73.33222222, 2.15, thresh=1.1, \
-                        plot_background=True, plot_bathtub=True, write_bathtub=True) 
-```
+## Troubleshooting
 
-Contributing
---------------
-`jwst_backgrounds` follows the STScI ["forking workflow"](https://github.com/spacetelescope/style-guides/blob/master/guides/git-workflow.md#forking-workflow).
+If matplotlib does not display the figures, choose a different backend in your
+`~/.matplotlib/matplotlibrc` (`backend: MacOSX`, `TkAgg`, …), or use the
+returned `(fig, ax)` to save them directly.
 
+## Credits
 
-TROUBLESHOOTING:
------------
-If matplotlib does not display the images, then try editing your ~/.matplotlib/matplotlibrc file,
-and choosing a different backend:  
+The original `jwst_backgrounds` was written by **Jane Rigby** (GSFC) and
+**Klaus Pontoppidan** (STScI); the background cache was prepared by Wayne Kinzel
+at STScI and is the same one used by the JWST Exposure Time Calculator. This is a
+performance fork maintained by **Fengwu Sun**; all background physics and data
+are unchanged. Software is provided as-is, with no warranty — confirm
+observability with APT and the ETC.
 ```
-backend: MacOSX
-backend: TkAgg
-backend: GTKCairo
-```
-
-Citation
---------
-This code was written by Jane Rigby (GSFC, Jane.Rigby@nasa.gov) and Klaus Pontoppidan (STScI, pontoppi@stsci.edu) The background cache was prepared by Wayne Kinzel at STScI, and is the same as used by the JWST Exposure Time Calculator.
 
