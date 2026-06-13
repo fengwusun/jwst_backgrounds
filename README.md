@@ -11,10 +11,10 @@ catalogs.
 
 ## What this fork adds
 
-* **Pre-baked deep fields.** The background cache for 17 JWST extragalactic
-  deep, lensing-cluster, and calibration fields is shipped *inside the package*
-  (`jwst_backgrounds/field_cache/`, 92 healpix pixels, ~27 MB, **byte-identical
-  to STScI**). Those positions need **no internet** — ever.
+* **Pre-baked deep fields.** The background cache for 24 JWST extragalactic
+  deep, lensing-cluster, wide-survey, and calibration fields is shipped *inside
+  the package* (`jwst_backgrounds/field_cache/`, 111 healpix pixels, ~34 MB,
+  **byte-identical to STScI**). Those positions need **no internet** — ever.
 * **Snap-to-nearest.** A position that isn't itself pre-baked but lies within a
   configurable radius (e.g. 1°) of a baked field can reuse that field's cache
   instead of downloading (opt-in; see [Snapping](#snapping)).
@@ -60,6 +60,9 @@ jwst_backgrounds --list-fields
 Wide/deep: **GOODS-N, GOODS-S, COSMOS, UDS, EGS, NEP-TDF**.
 Lensing clusters: **Abell 2744, Abell 370, MACS 0416, MACS 0717, MACS 1149,
 AS1063, MACS 1423, El Gordo, SMACS 0723**.
+Wide-area / Euclid / Roman: **SSA22, SXDF, XMM-LSS, EDF-N, EDF-S, EDF-F,
+Roman-TDF** — these multi-degree fields bake only a small exact core, so use
+`snap_deg` (≈1°) to cover the rest of the footprint.
 Calibration: **LMC, SMC**.
 
 Field names are matched forgivingly — case-, space- and punctuation-insensitive,

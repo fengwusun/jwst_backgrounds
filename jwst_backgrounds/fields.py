@@ -40,6 +40,15 @@ DEEP_FIELDS = {
     # --- Magellanic calibration fields ---
     "LMC":       ( 80.894167, -69.756111, 0.20),   # LMC astrometric field
     "SMC":       ( 13.158300, -72.800300, 0.20),   # SMC
+    # --- wide-area / equatorial / Euclid & Roman survey fields ---
+    # (wide fields: a small exact core is baked; use snap_deg for the full footprint)
+    "SSA22":     (334.394000,   0.275000, 0.15),   # SSA22 protocluster (z~3.1)
+    "SXDF":      ( 34.500000,  -5.000000, 0.15),   # Subaru/XMM Deep Field (wide UDS region)
+    "XMM-LSS":   ( 35.250000,  -4.500000, 0.15),   # XMM Large-Scale Structure (~11 deg^2)
+    "EDF-N":     (269.733000,  66.018000, 0.15),   # Euclid Deep Field North (~20 deg^2)
+    "EDF-S":     ( 61.241000, -48.423000, 0.15),   # Euclid Deep Field South (~23 deg^2)
+    "EDF-F":     ( 52.932000, -28.089000, 0.15),   # Euclid Deep Field Fornax (~0.33 deg from GOODS-S)
+    "Roman-TDF": ( 71.000000, -53.300000, 0.15),   # Roman HLTDS reference field (ADF-S; design not final)
 }
 
 # Any spelling -> canonical key.  Normalisation (see _norm) strips case and every
@@ -63,9 +72,8 @@ ALIASES = {
     "HUBBLE ULTRA DEEP FIELD": "GOODS-S", "ULTRA DEEP FIELD": "GOODS-S",
     # COSMOS
     "COSMOS-WEB": "COSMOS", "COSMOS FIELD": "COSMOS", "PRIMER-COSMOS": "COSMOS",
-    # UDS
-    "SXDS": "UDS", "PRIMER-UDS": "UDS", "XMM-UDS": "UDS",
-    "SUBARU XMM DEEP SURVEY": "UDS",
+    # UDS (deep JWST sub-field; the wider Subaru field is SXDF)
+    "PRIMER-UDS": "UDS", "XMM-UDS": "UDS", "UKIDSS-UDS": "UDS",
     # EGS
     "AEGIS": "EGS", "CEERS": "EGS", "EXTENDED GROTH STRIP": "EGS", "GROTH": "EGS",
     # NEP
@@ -83,6 +91,17 @@ ALIASES = {
     "ACT-CL J0102-4915": "ElGordo", "EL GORDO": "ElGordo", "ACTJ0102": "ElGordo",
     "SMACS J0723.3-7327": "SMACS0723", "SMACS": "SMACS0723", "ERO": "SMACS0723",
     "WEBBS FIRST DEEP FIELD": "SMACS0723", "FIRST DEEP FIELD": "SMACS0723",
+    # wide-area / Euclid / Roman
+    "SSA 22": "SSA22", "ADF22": "SSA22",
+    "SXDS": "SXDF", "SUBARU XMM DEEP SURVEY": "SXDF",
+    "SUBARU XMM-NEWTON DEEP FIELD": "SXDF",
+    "XMMLSS": "XMM-LSS", "XMM LARGE SCALE STRUCTURE": "XMM-LSS", "VIDEO-XMM": "XMM-LSS",
+    "EUCLID DEEP FIELD NORTH": "EDF-N", "EDFN": "EDF-N", "EDF NORTH": "EDF-N",
+    "EUCLID DEEP FIELD SOUTH": "EDF-S", "EDFS": "EDF-S", "EDF SOUTH": "EDF-S",
+    "EUCLID DEEP FIELD FORNAX": "EDF-F", "EDFF": "EDF-F", "EDF FORNAX": "EDF-F",
+    "ROMAN-HLTDS": "Roman-TDF", "ROMAN HLTDS": "Roman-TDF", "ROMAN TIME DOMAIN": "Roman-TDF",
+    "ROMAN DEEP FIELD": "Roman-TDF", "ROMAN TDS": "Roman-TDF",
+    "ADF-S": "Roman-TDF", "AKARI DEEP FIELD SOUTH": "Roman-TDF",
     # Magellanic
     "LARGE MAGELLANIC CLOUD": "LMC", "SMALL MAGELLANIC CLOUD": "SMC",
 }

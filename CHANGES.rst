@@ -4,10 +4,11 @@
 Fast fork of jwst_backgrounds. Output is verified identical to the official
 1.3.0 package (the default cache is unchanged: sl_cache_2.0).
 
-- Pre-baked background cache shipped for 17 JWST extragalactic deep,
-  lensing-cluster and calibration fields (GOODS-N/S, COSMOS, UDS, EGS, NEP-TDF,
-  Abell 2744/370, MACS 0416/0717/1149, AS1063, MACS 1423, El Gordo, SMACS 0723,
-  LMC, SMC): those positions work offline, byte-identical to STScI.
+- Pre-baked background cache shipped for 24 JWST extragalactic fields -- deep
+  (GOODS-N/S, COSMOS, UDS, EGS, NEP-TDF), lensing clusters (Abell 2744/370,
+  MACS 0416/0717/1149, AS1063, MACS 1423, El Gordo, SMACS 0723), wide-area /
+  Euclid / Roman (SSA22, SXDF, XMM-LSS, EDF-N/S/F, Roman-TDF) and calibration
+  (LMC, SMC): those positions work offline, byte-identical to STScI.
 - Forgiving field lookup: case/space/punctuation-insensitive, a large alias
   table (HUDF/CDF-S/NGDEEP/"JADES deep field" -> GOODS-S, CEERS -> EGS, ...),
   glob patterns ("MACS*"), and fuzzy/typo fallback, with disambiguation.
